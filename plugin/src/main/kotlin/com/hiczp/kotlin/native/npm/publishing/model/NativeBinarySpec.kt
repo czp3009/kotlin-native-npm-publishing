@@ -9,5 +9,12 @@ data class NativeBinarySpec(
     val executableFile: Provider<File>,
 ) {
     val packageSuffix: String
-        get() = platform.packageSuffix
+        get() = targetName.toKebabCase()
+}
+
+private fun String.toKebabCase(): String {
+    return split(Regex("(?=\\p{Upper})"))
+        .filter(String::isNotEmpty)
+        .joinToString("-")
+        .lowercase()
 }

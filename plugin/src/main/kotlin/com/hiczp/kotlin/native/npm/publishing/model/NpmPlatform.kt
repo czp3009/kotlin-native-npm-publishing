@@ -1,31 +1,33 @@
 package com.hiczp.kotlin.native.npm.publishing.model
 
+import org.jetbrains.kotlin.konan.target.Architecture
+import org.jetbrains.kotlin.konan.target.Family
+
 data class NpmPlatform(
     val os: String,
     val cpu: String,
     val libc: String? = null,
 ) {
-    val packageSuffix: String
-        get() = listOf(os, cpu).joinToString("-")
-
     companion object {
-        val supportedKotlinNativeTargets = listOf(
-            "linuxX64",
-            "linuxArm64",
-            "macosX64",
-            "macosArm64",
-            "mingwX64",
-        )
-
-        fun fromKotlinNativeTarget(targetName: String): NpmPlatform? {
-            return when (targetName) {
-                "linuxX64" -> NpmPlatform(os = "linux", cpu = "x64", libc = "glibc")
-                "linuxArm64" -> NpmPlatform(os = "linux", cpu = "arm64", libc = "glibc")
-                "macosX64" -> NpmPlatform(os = "darwin", cpu = "x64")
-                "macosArm64" -> NpmPlatform(os = "darwin", cpu = "arm64")
-                "mingwX64" -> NpmPlatform(os = "win32", cpu = "x64")
-                else -> null
+        fun fromKonanTarget(family: Family, architecture: Architecture): NpmPlatform? {
+            val os = when (family) {
+                Family.LINUX -> "linux"
+                Family.OSX -> "darwin"
+                Family.MINGW -> "win32"
+                else -> return null
             }
+
+            val cpu = when (architecture) {
+                Architecture.X64 -> "x64"
+                Architecture.ARM64 -> "arm64"
+                else -> return null
+            }
+
+            return NpmPlatform(
+                os = os,
+                cpu = cpu,
+                libc = if (os == "linux") "glibc" else null,
+            )
         }
     }
 }

@@ -20,15 +20,16 @@ The main package declares the platform packages as `optionalDependencies`. At ru
 `process.platform` and `process.arch`, loads the matching platform package, and executes the bundled native binary with
 the original command-line arguments.
 
-Supported native targets:
+Supported host native target families:
 
-| Kotlin target | npm `os` | npm `cpu` | npm `libc` | package suffix |
-|---------------|----------|-----------|------------|----------------|
-| `linuxX64`    | `linux`  | `x64`     | `glibc`    | `linux-x64`    |
-| `linuxArm64`  | `linux`  | `arm64`   | `glibc`    | `linux-arm64`  |
-| `macosX64`    | `darwin` | `x64`     |            | `darwin-x64`   |
-| `macosArm64`  | `darwin` | `arm64`   |            | `darwin-arm64` |
-| `mingwX64`    | `win32`  | `x64`     |            | `win32-x64`    |
+| Kotlin target family | npm `os` | Supported npm `cpu` |
+|----------------------|----------|---------------------|
+| Linux                | `linux`  | `x64`, `arm64`      |
+| macOS                | `darwin` | `x64`, `arm64`      |
+| MinGW                | `win32`  | `x64`, `arm64`      |
+
+The platform package suffix is derived from the Kotlin target name converted to kebab-case. For example,
+`linuxX64` becomes `linux-x64`, and `macosArm64` becomes `macos-arm64`.
 
 This plugin only handles kotlin native executable binaries. It does not publish Kotlin JS, JVM artifacts, or other
 Kotlin Multiplatform outputs.
@@ -103,7 +104,7 @@ The extension name is `kotlinNativeNpmPublishing`.
 | `publishArguments` | empty                                | Extra arguments passed to each `npm publish` invocation.                 |
 | `outputDirectory`  | `build/kotlin-native-npm-publishing` | Directory used for generated npm packages.                               |
 
-Platform package names are derived from `packageName`:
+Platform package names are derived from `packageName` and the Kotlin target name converted to kebab-case:
 
 ```text
 my-tool -> my-tool-linux-x64

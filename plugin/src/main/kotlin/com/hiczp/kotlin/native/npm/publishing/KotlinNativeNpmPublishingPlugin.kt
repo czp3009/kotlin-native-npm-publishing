@@ -82,8 +82,10 @@ abstract class KotlinNativeNpmPublishingPlugin : Plugin<Project> {
             extensions.configure(KotlinMultiplatformExtension::class.java) {
                 targets.withType(KotlinNativeTarget::class.java).configureEach {
                     val target = this
-                    val platform = NpmPlatform.fromKotlinNativeTarget(target.name)
-                        ?: return@configureEach
+                    val platform = NpmPlatform.fromKonanTarget(
+                        family = target.konanTarget.family,
+                        architecture = target.konanTarget.architecture,
+                    ) ?: return@configureEach
 
                     target.binaries.withType(Executable::class.java).configureEach {
                         val binary = this

@@ -4,6 +4,7 @@ import com.hiczp.kotlin.native.npm.publishing.model.NativeBinarySpec
 import com.hiczp.kotlin.native.npm.publishing.model.NpmPlatform
 import groovy.json.JsonOutput
 import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.FileSystemOperations
@@ -81,8 +82,7 @@ abstract class GenerateKotlinNativeNpmPackagesTask : DefaultTask() {
         require(commandName.isNotEmpty()) { "npm command name must not be empty." }
         require(binaries.isNotEmpty()) {
             "No supported kotlin native executable link tasks were found. " +
-                    "Define native executable binaries for one of: " +
-                    NpmPlatform.supportedKotlinNativeTargets.joinToString(", ") + "."
+                    "Define release executable binaries for Linux, macOS, or Windows native targets."
         }
 
         val outputDir = outputDirectory.get().asFile
@@ -90,11 +90,11 @@ abstract class GenerateKotlinNativeNpmPackagesTask : DefaultTask() {
             delete(outputDir)
         }
 
-        val platformPackages = binaries.map { binary ->
+        val platformPackageNames = binaries.map { binary ->
             writePlatformPackage(outputDir, packageName, packageVersion, commandName, binary)
         }
 
-        writeMainPackage(outputDir, packageName, packageVersion, commandName, platformPackages)
+        writeMainPackage(outputDir, packageName, packageVersion, commandName, platformPackageNames)
     }
 
     private fun writePlatformPackage(
@@ -103,8 +103,17 @@ abstract class GenerateKotlinNativeNpmPackagesTask : DefaultTask() {
         packageVersion: String,
         commandName: String,
         binary: NativeBinarySpec,
-    ): PlatformPackage {
-        val platformPackageName = platformPackageName(packageName, binary.packageSuffix)
+    ): String {
+        val platformPackageName = if (packageName.startsWith("@")) {
+            val slashIndex = packageName.indexOf('/')
+            require(slashIndex > 1 && slashIndex < packageName.lastIndex) {
+                "Scoped npm package names must use the @scope/name form."
+            }
+
+            "${packageName.substring(0, slashIndex)}/${packageName.substring(slashIndex + 1)}-${binary.packageSuffix}"
+        } else {
+            "$packageName-${binary.packageSuffix}"
+        }
         val packageDir = outputDir.resolve("platforms/${binary.packageSuffix}")
         val binDir = packageDir.resolve("bin")
 
@@ -145,10 +154,7 @@ abstract class GenerateKotlinNativeNpmPackagesTask : DefaultTask() {
             },
         )
 
-        return PlatformPackage(
-            name = platformPackageName,
-            platform = binary.platform,
-        )
+        return platformPackageName
     }
 
     private fun writeMainPackage(
@@ -156,7 +162,7 @@ abstract class GenerateKotlinNativeNpmPackagesTask : DefaultTask() {
         packageName: String,
         packageVersion: String,
         commandName: String,
-        platformPackages: List<PlatformPackage>,
+        platformPackageNames: List<String>,
     ) {
         val packageDir = outputDir.resolve("main")
         val binDir = packageDir.resolve("bin")
@@ -164,7 +170,7 @@ abstract class GenerateKotlinNativeNpmPackagesTask : DefaultTask() {
 
         val scriptPath = "bin/$commandName.js"
         val script = binDir.resolve("$commandName.js")
-        script.writeText(wrapperScript(platformPackages), Charsets.UTF_8)
+        script.writeText(wrapperResource(), Charsets.UTF_8)
         script.setExecutable(true, false)
 
         writeJson(
@@ -184,87 +190,10 @@ abstract class GenerateKotlinNativeNpmPackagesTask : DefaultTask() {
                 put("files", listOf("bin/"))
                 put(
                     "optionalDependencies",
-                    platformPackages.associate { it.name to packageVersion },
+                    platformPackageNames.associateWith { packageVersion },
                 )
             },
         )
-    }
-
-    private fun wrapperScript(platformPackages: List<PlatformPackage>): String {
-        val packageMap = platformPackages.joinToString(",\n") { platformPackage ->
-            val key = "${platformPackage.platform.os}-${platformPackage.platform.cpu}"
-            "  ${jsonString(key)}: ${jsonString(platformPackage.name)}"
-        }
-
-        return """
-            |#!/usr/bin/env node
-            |'use strict';
-            |
-            |const childProcess = require('child_process');
-            |const fs = require('fs');
-            |const path = require('path');
-            |
-            |const packages = {
-            |$packageMap
-            |};
-            |
-            |const key = `${'$'}{process.platform}-${'$'}{process.arch}`;
-            |const packageName = packages[key];
-            |
-            |if (!packageName) {
-            |  console.error(`Unsupported platform: ${'$'}{key}`);
-            |  process.exit(1);
-            |}
-            |
-            |let packageRoot;
-            |try {
-            |  packageRoot = path.dirname(require.resolve(`${'$'}{packageName}/package.json`));
-            |} catch (error) {
-            |  console.error(`Missing platform package: ${'$'}{packageName}`);
-            |  console.error('Reinstall this npm package on the target platform.');
-            |  process.exit(1);
-            |}
-            |
-            |const packageJson = require(path.join(packageRoot, 'package.json'));
-            |const binary = path.join(packageRoot, packageJson.kotlinNativeNpmPublishing.binary);
-            |
-            |if (process.platform !== 'win32') {
-            |  try {
-            |    fs.chmodSync(binary, 0o755);
-            |  } catch (_) {
-            |  }
-            |}
-            |
-            |const result = childProcess.spawnSync(binary, process.argv.slice(2), { stdio: 'inherit' });
-            |
-            |if (result.error) {
-            |  console.error(result.error.message);
-            |  process.exit(1);
-            |}
-            |
-            |if (result.signal) {
-            |  console.error(`Process terminated by signal ${'$'}{result.signal}`);
-            |  process.exit(1);
-            |}
-            |
-            |process.exit(result.status === null ? 1 : result.status);
-            |
-        """.trimMargin()
-    }
-
-    private fun platformPackageName(packageName: String, platformSuffix: String): String {
-        if (!packageName.startsWith("@")) {
-            return "$packageName-$platformSuffix"
-        }
-
-        val slashIndex = packageName.indexOf('/')
-        require(slashIndex > 1 && slashIndex < packageName.lastIndex) {
-            "Scoped npm package names must use the @scope/name form."
-        }
-
-        val scope = packageName.substring(0, slashIndex)
-        val unscopedName = packageName.substring(slashIndex + 1)
-        return "$scope/$unscopedName-$platformSuffix"
     }
 
     private fun writeJson(file: File, value: Any?) {
@@ -272,13 +201,15 @@ abstract class GenerateKotlinNativeNpmPackagesTask : DefaultTask() {
         file.writeText("${JsonOutput.prettyPrint(JsonOutput.toJson(value))}\n", Charsets.UTF_8)
     }
 
-    private fun jsonString(value: String): String = JsonOutput.toJson(value)
-}
+    private fun wrapperResource(): String {
+        return javaClass.getResource(WRAPPER_RESOURCE)?.readText(Charsets.UTF_8)
+            ?: throw GradleException("Missing wrapper resource: $WRAPPER_RESOURCE")
+    }
 
-private data class PlatformPackage(
-    val name: String,
-    val platform: NpmPlatform,
-)
+    private companion object {
+        const val WRAPPER_RESOURCE = "/com/hiczp/kotlin/native/npm/publishing/wrapper.js"
+    }
+}
 
 private val NpmPlatform.descriptor: String
     get() = listOf(os, cpu, libc.orEmpty()).joinToString(":")
