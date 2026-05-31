@@ -1,0 +1,103 @@
+* text=auto eol=lf
+
+# JVM / Gradle artifacts
+*.class binary
+*.jar binary
+*.war binary
+*.ear binary
+*.nar binary
+*.aar binary
+*.jmod binary
+*.jimage binary
+*.kotlin_module binary
+*.klib binary
+
+# Android artifacts
+*.apk binary
+*.aab binary
+*.dex binary
+
+# Runtime dumps and serialized data
+*.hprof binary
+*.jfr binary
+*.dump binary
+*.ser binary
+
+# Native libraries and executables
+*.a binary
+*.dylib binary
+*.dll binary
+*.exe binary
+*.lib binary
+*.o binary
+*.obj binary
+*.so binary
+
+# Archives and packages
+*.7z binary
+*.bz2 binary
+*.gz binary
+*.rar binary
+*.tar binary
+*.tar.bz2 binary
+*.tar.gz binary
+*.tar.xz binary
+*.tbz2 binary
+*.tgz binary
+*.txz binary
+*.xz binary
+*.zip binary
+
+# Images and icons
+*.avif binary
+*.bmp binary
+*.gif binary
+*.heic binary
+*.icns binary
+*.ico binary
+*.jpeg binary
+*.jpg binary
+*.png binary
+*.psd binary
+*.tif binary
+*.tiff binary
+*.webp binary
+
+# Fonts
+*.eot binary
+*.otf binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
+
+# Documents and media often stored as resources
+*.avi binary
+*.doc binary
+*.docx binary
+*.mp3 binary
+*.mp4 binary
+*.ogg binary
+*.pdf binary
+*.ppt binary
+*.pptx binary
+*.wav binary
+*.webm binary
+*.xls binary
+*.xlsx binary
+
+# Java keystores and binary certificates
+*.bcfks binary
+*.bks binary
+*.der binary
+*.jceks binary
+*.jks binary
+*.p12 binary
+*.pfx binary
+*.keystore binary
+
+# Binary fixtures and generated payloads
+*.bin binary
+*.db binary
+*.pb binary
+*.sqlite binary
+*.sqlite3 binary

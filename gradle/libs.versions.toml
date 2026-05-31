@@ -1,0 +1,11 @@
+[versions]
+gradle-node-plugin = "7.1.0"
+gradle-plugin-publish = "2.1.1"
+kotlin = "2.3.21"
+
+[libraries]
+gradle-node-plugin = { module = "com.github.node-gradle:gradle-node-plugin", version.ref = "gradle-node-plugin" }
+kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+
+[plugins]
+gradle-plugin-publish = { id = "com.gradle.plugin-publish", version.ref = "gradle-plugin-publish" }
