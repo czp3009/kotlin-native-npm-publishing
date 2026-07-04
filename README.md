@@ -1,46 +1,54 @@
 # kotlin native npm publishing
 
-`kotlin-native-npm-publishing` is a Gradle plugin for publishing kotlin native executable binaries to npm as packages
-that can be run with `npx`.
+`kotlin-native-npm-publishing` is a Gradle plugin for publishing Kotlin/Native executable binaries as npm packages that
+can be run with `npx`.
 
-The plugin is intentionally small. It discovers release executable binaries from Kotlin Multiplatform native targets,
-generates npm package directories, writes a small JavaScript launcher, and publishes the generated packages with
-`gradle-node-plugin`.
+The plugin applies `com.github.node-gradle.node`, generates npm package directories, writes a JavaScript launcher, and
+runs `npm publish` through `gradle-node-plugin`.
 
-When this plugin is applied, `com.github.node-gradle.node` is applied automatically. This project does not add its own
-Node.js configuration conventions; if you need to configure Node.js, npm, registry behavior, or download settings, use
-the normal gradle-node DSL directly.
+## Package Layout
 
-## What it publishes
+The plugin publishes two kinds of npm packages:
 
-For each supported native target, the plugin creates one platform package containing the executable binary. It also
-creates one main npm package containing the JavaScript launcher.
+| Package          | Content                                | Purpose                                         |
+|------------------|----------------------------------------|-------------------------------------------------|
+| Main package     | `package.json` and JavaScript launcher | The package users install or run with `npx`.    |
+| Platform package | One Kotlin/Native executable binary    | The native binary for one Kotlin/Native target. |
 
-The main package declares the platform packages as `optionalDependencies`. At runtime, the launcher checks
-`process.platform` and `process.arch`, loads the matching platform package, and executes the bundled native binary with
-the original command-line arguments.
+The main package declares platform packages as `optionalDependencies`. It also writes a
+`kotlinNativeNpmPublishing.platformPackages` map from npm platform keys such as `linux-x64` or `win32-x64` to platform
+package names.
 
-Supported host native target families:
+At runtime, the launcher uses `process.platform` and `process.arch`, resolves the matching optional dependency, and
+executes the native binary with the original command-line arguments.
 
-| Kotlin target family | npm `os` | Supported npm `cpu` |
-|----------------------|----------|---------------------|
-| Linux                | `linux`  | `x64`, `arm64`      |
-| macOS                | `darwin` | `x64`, `arm64`      |
-| MinGW                | `win32`  | `x64`, `arm64`      |
+Supported native target families:
 
-The platform package suffix is derived from the Kotlin target name converted to kebab-case. For example,
-`linuxX64` becomes `linux-x64`, and `macosArm64` becomes `macos-arm64`.
+| Kotlin/Native target family | npm `os` | npm `cpu`      |
+|-----------------------------|----------|----------------|
+| Linux                       | `linux`  | `x64`, `arm64` |
+| macOS                       | `darwin` | `x64`, `arm64` |
+| MinGW                       | `win32`  | `x64`, `arm64` |
 
-This plugin only handles kotlin native executable binaries. It does not publish Kotlin JS, JVM artifacts, or other
-Kotlin Multiplatform outputs.
+Platform package names are derived from the main package name and `KonanTarget.name`:
 
-## Usage
+```text
+my-tool -> my-tool-linux_x64
+@example/my-tool -> @example/my-tool-linux_x64
+```
 
-Apply the plugin together with Kotlin Multiplatform and define native executable binaries:
+Only Kotlin/Native executable binaries are published. Kotlin JS, JVM, metadata, and other KMP outputs are ignored.
+
+## Gradle Setup
+
+Apply Kotlin Multiplatform and this plugin, then define release executable binaries for the native targets you want to
+publish:
 
 ```kotlin
+import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
+
 plugins {
-    kotlin("multiplatform") version "2.3.21"
+    kotlin("multiplatform") version "2.4.0"
     id("com.hiczp.kotlin-native-npm-publishing") version "0.0.1"
 }
 
@@ -48,15 +56,13 @@ group = "com.example"
 version = "1.0.0"
 
 kotlin {
-    linuxX64 {
-        binaries {
-            executable()
-        }
-    }
+    linuxX64()
+    macosArm64()
+    mingwX64()
 
-    macosArm64 {
-        binaries {
-            executable()
+    targets.withType<KotlinNativeTarget>().configureEach {
+        binaries.executable {
+            entryPoint = "com.example.main"
         }
     }
 }
@@ -67,72 +73,97 @@ kotlinNativeNpmPublishing {
     license.set("MIT")
     repository.set("https://github.com/example/my-tool")
     keywords.addAll("kotlin", "native", "cli")
-
-    publishArguments.addAll("--access", "public")
+    access.set("public")
 }
 ```
 
-Publish with:
+## Publish Tasks
+
+Publish the main package and platform packages buildable on the current host:
 
 ```shell
 ./gradlew publishKotlinNativeNpm
 ```
 
-The task builds the release executable binaries, publishes the generated platform packages, and then publishes the main
-package.
+Publish only the main package:
 
-After publishing, users can run the command with:
+```shell
+./gradlew publishKotlinNativeNpmMainPackage
+```
+
+This task does not run native compilation. The main package metadata is calculated from all supported Kotlin/Native
+executable targets declared in the KMP project, not only from targets buildable on the current host.
+
+Publish one platform package:
+
+```shell
+./gradlew publishKotlinNativeNpmLinuxX64Package
+./gradlew publishKotlinNativeNpmMacosArm64Package
+./gradlew publishKotlinNativeNpmMingwX64Package
+```
+
+Platform publish tasks are generated from the configured Kotlin/Native executable targets. If a target is not
+configured,
+the corresponding publish task is not created.
+
+If no supported native executable target is configured, the main package is still generated, but it has no
+`optionalDependencies`.
+
+## Split CI Publishing
+
+Kotlin/Native cannot always build every target on one host. If one CI platform cannot build all Kotlin Multiplatform
+native outputs, publish the main package and platform packages from multiple CI jobs. For example, publish the main
+package and Linux platform packages from Linux CI, then publish the macOS platform package from macOS CI.
+
+A split CI release can look like this:
+
+```shell
+# Linux CI
+./gradlew publishKotlinNativeNpm
+
+# Windows CI
+./gradlew publishKotlinNativeNpmMingwX64Package
+
+# macOS CI
+./gradlew publishKotlinNativeNpmMacosArm64Package
+```
+
+Publishing all platform packages first and the main package last avoids a window where the main package references a
+platform package that is not published yet. Publishing the main package earlier is still valid once the missing platform
+packages are later published with the same version.
+
+After publishing, users run:
 
 ```shell
 npx @example/my-tool
 ```
 
-## Configuration
+## Extension Properties
 
-The extension name is `kotlinNativeNpmPublishing`.
+Configure the plugin with the `kotlinNativeNpmPublishing { ... }` block.
 
-| Property           | Default                              | Description                                                              |
-|--------------------|--------------------------------------|--------------------------------------------------------------------------|
-| `packageName`      | `project.name`                       | Main npm package name. Scoped names such as `@scope/name` are supported. |
-| `packageVersion`   | `project.version`                    | npm package version. The value must not be empty or `unspecified`.       |
-| `commandName`      | Unscoped package name                | Command exposed through the npm `bin` field.                             |
-| `description`      | unset                                | npm package description.                                                 |
-| `license`          | unset                                | npm package license.                                                     |
-| `repository`       | unset                                | Main npm package repository field.                                       |
-| `homepage`         | unset                                | Main npm package homepage field.                                         |
-| `keywords`         | empty                                | Main npm package keywords.                                               |
-| `publishArguments` | empty                                | Extra arguments passed to each `npm publish` invocation.                 |
-| `outputDirectory`  | `build/kotlin-native-npm-publishing` | Directory used for generated npm packages.                               |
+| Property           | Default                                    | Description                                                              |
+|--------------------|--------------------------------------------|--------------------------------------------------------------------------|
+| `packageName`      | `project.name`                             | Main npm package name. Scoped names such as `@scope/name` are supported. |
+| `packageVersion`   | `project.version`                          | npm package version. Must not be empty or `unspecified`.                 |
+| `commandName`      | `packageName` without the `@scope/` prefix | Command exposed through the npm `bin` field.                             |
+| `description`      | unset                                      | npm package description.                                                 |
+| `license`          | unset                                      | npm package license.                                                     |
+| `repository`       | unset                                      | Main npm package repository field.                                       |
+| `homepage`         | unset                                      | Main npm package homepage field.                                         |
+| `keywords`         | empty                                      | Main npm package keywords.                                               |
+| `registry`         | unset                                      | Passed to npm as `--registry`.                                           |
+| `access`           | unset                                      | Passed to npm as `--access`, usually `public` or `restricted`.           |
+| `tag`              | unset                                      | Passed to npm as `--tag`.                                                |
+| `otp`              | unset                                      | Passed to npm as `--otp`.                                                |
+| `dryRun`           | `false`                                    | Adds `--dry-run` to each `npm publish` invocation.                       |
+| `provenance`       | `false`                                    | Adds `--provenance` to each `npm publish` invocation.                    |
+| `provenanceFile`   | unset                                      | Passed to npm as `--provenance-file`.                                    |
+| `publishArguments` | empty                                      | Extra arguments appended to each `npm publish` invocation.               |
+| `outputDirectory`  | `build/kotlin-native-npm-publishing`       | Directory used for generated npm packages.                               |
 
-Platform package names are derived from `packageName` and the Kotlin target name converted to kebab-case:
+Use `publishArguments` only for npm publish options that are not modeled by the plugin.
 
-```text
-my-tool -> my-tool-linux-x64
-@example/my-tool -> @example/my-tool-linux-x64
-```
+## Example
 
-## Node.js configuration
-
-Because `gradle-node-plugin` is applied automatically, you can configure it in the same build if needed:
-
-```kotlin
-node {
-    version.set("22.11.0")
-    download.set(true)
-}
-```
-
-If you do not configure `node { ... }`, gradle-node defaults are used.
-
-## npm publishing
-
-This plugin delegates publishing to `npm publish`. Authentication, registry selection, `.npmrc`, environment variables,
-and npm tokens are handled by npm and gradle-node.
-
-For public scoped packages, pass npm's `--access public` argument:
-
-```kotlin
-kotlinNativeNpmPublishing {
-    publishArguments.addAll("--access", "public")
-}
-```
+See [`example`](example/README.md) for a runnable demo.

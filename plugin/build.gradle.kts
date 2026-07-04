@@ -1,4 +1,5 @@
 import org.gradle.plugin.compatibility.compatibility
+import java.util.*
 
 plugins {
     `kotlin-dsl`
@@ -6,7 +7,9 @@ plugins {
 }
 
 group = "com.hiczp"
-version = "0.0.1"
+version = Properties().apply {
+    file("../gradle.properties").inputStream().use(::load)
+}.getProperty("projectVersion")
 
 repositories {
     gradlePluginPortal()
@@ -32,7 +35,7 @@ gradlePlugin {
 
             compatibility {
                 features {
-                    configurationCache = false
+                    configurationCache = true
                 }
             }
         }

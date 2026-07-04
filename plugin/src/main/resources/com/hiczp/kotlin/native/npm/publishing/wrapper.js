@@ -5,31 +5,26 @@ const childProcess = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const kotlinTargetPrefixes = {
-    linux: 'linux',
-    darwin: 'macos',
-    win32: 'mingw'
-};
+const mainPackageJson = require(path.join(__dirname, '..', 'package.json'));
+const platformPackages = mainPackageJson.kotlinNativeNpmPublishing.platformPackages || {};
+const platform = `${process.platform}-${process.arch}`;
+const packageName = platformPackages[platform];
 
-const targetPrefix = kotlinTargetPrefixes[process.platform];
-
-if (!targetPrefix) {
-    console.error(`Unsupported platform: ${process.platform}-${process.arch}`);
+if (!packageName) {
+    console.error(`Unsupported platform: ${platform}`);
+    if (Object.keys(platformPackages).length === 0) {
+        console.error('This package does not declare any native platform packages.');
+    } else {
+        console.error(`Supported platforms: ${Object.keys(platformPackages).sort().join(', ')}`);
+    }
     process.exit(1);
 }
-
-const mainPackageJson = require(path.join(__dirname, '..', 'package.json'));
-const platformSuffix = `${targetPrefix}-${process.arch}`;
-const slashIndex = mainPackageJson.name.indexOf('/');
-const packageName = mainPackageJson.name.startsWith('@')
-    ? `${mainPackageJson.name.substring(0, slashIndex)}/${mainPackageJson.name.substring(slashIndex + 1)}-${platformSuffix}`
-    : `${mainPackageJson.name}-${platformSuffix}`;
 
 let packageRoot;
 try {
     packageRoot = path.dirname(require.resolve(`${packageName}/package.json`));
 } catch (error) {
-    console.error(`Missing platform package: ${packageName}`);
+    console.error(`Missing platform package for ${platform}: ${packageName}`);
     console.error('Reinstall this npm package on the target platform.');
     process.exit(1);
 }

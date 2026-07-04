@@ -14,7 +14,7 @@ abstract class KotlinNativeNpmPublishingExtension @Inject constructor(project: P
         .convention(project.provider { project.version.toString() })
 
     val commandName: Property<String> = project.objects.property(String::class.java)
-        .convention(packageName.map(::defaultCommandName))
+        .convention(packageName.map { it.substringAfter('/').removePrefix("@") })
 
     val description: Property<String> = project.objects.property(String::class.java)
 
@@ -27,13 +27,25 @@ abstract class KotlinNativeNpmPublishingExtension @Inject constructor(project: P
     val keywords: ListProperty<String> = project.objects.listProperty(String::class.java)
         .convention(emptyList())
 
+    val registry: Property<String> = project.objects.property(String::class.java)
+
+    val access: Property<String> = project.objects.property(String::class.java)
+
+    val tag: Property<String> = project.objects.property(String::class.java)
+
+    val otp: Property<String> = project.objects.property(String::class.java)
+
+    val dryRun: Property<Boolean> = project.objects.property(Boolean::class.javaObjectType)
+        .convention(false)
+
+    val provenance: Property<Boolean> = project.objects.property(Boolean::class.javaObjectType)
+        .convention(false)
+
+    val provenanceFile: Property<String> = project.objects.property(String::class.java)
+
     val publishArguments: ListProperty<String> = project.objects.listProperty(String::class.java)
         .convention(emptyList())
 
     val outputDirectory: DirectoryProperty = project.objects.directoryProperty()
         .convention(project.layout.buildDirectory.dir("kotlin-native-npm-publishing"))
-}
-
-private fun defaultCommandName(packageName: String): String {
-    return packageName.substringAfter('/').removePrefix("@")
 }
