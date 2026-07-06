@@ -6,14 +6,6 @@ This subproject builds and publishes the Gradle plugin:
 com.hiczp.kotlin-native-npm-publishing
 ```
 
-The plugin version comes from the root `gradle.properties` file:
-
-```properties
-projectVersion=0.0.1
-```
-
-Gradle Plugin Portal does not allow publishing the same version twice.
-
 ## Build And Validate
 
 Run these commands from the repository root.

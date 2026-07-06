@@ -49,7 +49,7 @@ import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 
 plugins {
     kotlin("multiplatform") version "2.4.0"
-    id("com.hiczp.kotlin-native-npm-publishing") version "0.0.1"
+    id("com.hiczp.kotlin-native-npm-publishing") version "0.0.2"
 }
 
 group = "com.example"
@@ -74,6 +74,15 @@ kotlinNativeNpmPublishing {
     repository.set("https://github.com/example/my-tool")
     keywords.addAll("kotlin", "native", "cli")
     access.set("public")
+
+    stage {
+        main {
+            readme()
+        }
+
+        platforms {
+        }
+    }
 }
 ```
 
@@ -109,6 +118,10 @@ the corresponding publish task is not created.
 If no supported native executable target is configured, the main package is still generated, but it has no
 `optionalDependencies`.
 
+Package generation is split into prepare and finalize tasks. The prepare task clears the package stage directory, writes
+the plugin-managed files, and applies `stage.main` or `stage.platforms` copy rules. The finalize task scans the final
+stage directory, writes `package.json`, and includes the staged top-level files and directories in `package.json.files`.
+
 ## Split CI Publishing
 
 Kotlin/Native cannot always build every target on one host. If one CI platform cannot build all Kotlin Multiplatform
@@ -142,27 +155,85 @@ npx @example/my-tool
 
 Configure the plugin with the `kotlinNativeNpmPublishing { ... }` block.
 
-| Property           | Default                                    | Description                                                              |
-|--------------------|--------------------------------------------|--------------------------------------------------------------------------|
-| `packageName`      | `project.name`                             | Main npm package name. Scoped names such as `@scope/name` are supported. |
-| `packageVersion`   | `project.version`                          | npm package version. Must not be empty or `unspecified`.                 |
-| `commandName`      | `packageName` without the `@scope/` prefix | Command exposed through the npm `bin` field.                             |
-| `description`      | unset                                      | npm package description.                                                 |
-| `license`          | unset                                      | npm package license.                                                     |
-| `repository`       | unset                                      | Main npm package repository field.                                       |
-| `homepage`         | unset                                      | Main npm package homepage field.                                         |
-| `keywords`         | empty                                      | Main npm package keywords.                                               |
-| `registry`         | unset                                      | Passed to npm as `--registry`.                                           |
-| `access`           | unset                                      | Passed to npm as `--access`, usually `public` or `restricted`.           |
-| `tag`              | unset                                      | Passed to npm as `--tag`.                                                |
-| `otp`              | unset                                      | Passed to npm as `--otp`.                                                |
-| `dryRun`           | `false`                                    | Adds `--dry-run` to each `npm publish` invocation.                       |
-| `provenance`       | `false`                                    | Adds `--provenance` to each `npm publish` invocation.                    |
-| `provenanceFile`   | unset                                      | Passed to npm as `--provenance-file`.                                    |
-| `publishArguments` | empty                                      | Extra arguments appended to each `npm publish` invocation.               |
-| `outputDirectory`  | `build/kotlin-native-npm-publishing`       | Directory used for generated npm packages.                               |
+| Property                | Default                                    | Description                                                              |
+|-------------------------|--------------------------------------------|--------------------------------------------------------------------------|
+| `packageName`           | `project.name`                             | Main npm package name. Scoped names such as `@scope/name` are supported. |
+| `packageVersion`        | `project.version`                          | npm package version. Must not be empty or `unspecified`.                 |
+| `commandName`           | `packageName` without the `@scope/` prefix | Command exposed through the npm `bin` field.                             |
+| `description`           | unset                                      | npm package description.                                                 |
+| `license`               | unset                                      | npm package license.                                                     |
+| `repository`            | unset                                      | Main npm package repository field.                                       |
+| `homepage`              | unset                                      | Main npm package homepage field.                                         |
+| `keywords`              | empty                                      | Main npm package keywords.                                               |
+| `registry`              | unset                                      | Passed to npm as `--registry`.                                           |
+| `access`                | unset                                      | Passed to npm as `--access`, usually `public` or `restricted`.           |
+| `tag`                   | unset                                      | Passed to npm as `--tag`.                                                |
+| `otp`                   | unset                                      | Passed to npm as `--otp`.                                                |
+| `dryRun`                | `false`                                    | Adds `--dry-run` to each `npm publish` invocation.                       |
+| `provenance`            | `false`                                    | Adds `--provenance` to each `npm publish` invocation.                    |
+| `provenanceFile`        | unset                                      | Passed to npm as `--provenance-file`.                                    |
+| `publishArguments`      | empty                                      | Extra arguments appended to each `npm publish` invocation.               |
+| `stage.outputDirectory` | `build/kotlinNativeNpmPublishing`          | Directory used for generated npm packages.                               |
 
 Use `publishArguments` only for npm publish options that are not modeled by the plugin.
+
+## Stage DSL
+
+Use the stage DSL for normal package file customization. A custom Gradle task is usually not needed just to copy files
+into the stage directory.
+
+```kotlin
+kotlinNativeNpmPublishing {
+    stage {
+        outputDirectory.set(layout.buildDirectory.dir("kotlinNativeNpmPublishing"))
+
+        main {
+            readme()
+            license()
+            copy("CHANGELOG.md")
+            copy("docs", "docs")
+        }
+
+        platforms {
+            readme()
+            copy("NOTICE.txt")
+        }
+    }
+}
+```
+
+Configure main package files with `stage.main { ... }` and platform package files with `stage.platforms { ... }`. Both
+blocks support the same methods:
+
+| Method             | Behavior                                                                                  |
+|--------------------|-------------------------------------------------------------------------------------------|
+| `copy(file)`       | Copies one file into the package root, or recursively copies one directory into the root. |
+| `copy(file, path)` | Copies one file or directory to a relative path under the package root.                   |
+| `readme(file)`     | Copies one file to `README.md`.                                                           |
+| `readme()`         | Copies the current Gradle project's `README.md`; fails if it does not exist.              |
+| `license(file)`    | Copies one file to `LICENSE`.                                                             |
+| `license()`        | Copies the current Gradle project's `LICENSE`; fails if it does not exist.                |
+
+`readme()` and `license()`, including their overloads, are convenience methods over `copy(...)` for common npm package
+files.
+
+The plugin writes its launcher or native executable before applying stage copy rules. If a stage copy overwrites those
+files, the user-provided files win.
+
+For unusual cases where another Gradle task must generate files directly into the stage directory, make that task run
+after prepare and before finalize:
+
+```kotlin
+val addExtraMainFiles by tasks.registering(Copy::class) {
+    dependsOn(tasks.named("prepareKotlinNativeNpmMainPackage"))
+    from("extra")
+    into(kotlinNativeNpmPublishing.stage.outputDirectory.dir("main"))
+}
+
+tasks.named("finalizeKotlinNativeNpmMainPackage") {
+    dependsOn(addExtraMainFiles)
+}
+```
 
 ## Example
 

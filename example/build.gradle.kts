@@ -36,4 +36,12 @@ kotlinNativeNpmPublishing {
             .orElse(providers.gradleProperty("npmAccess").map { false })
             .orElse(true),
     )
+    stage {
+        main {
+            readme()
+        }
+        platforms {
+            readme()
+        }
+    }
 }

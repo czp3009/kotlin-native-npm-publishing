@@ -1,9 +1,12 @@
 package com.hiczp.kotlin.native.npm.publishing
 
+import org.gradle.api.Action
 import org.gradle.api.Project
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.tasks.*
 import javax.inject.Inject
 
 abstract class KotlinNativeNpmPublishingExtension @Inject constructor(project: Project) {
@@ -46,6 +49,91 @@ abstract class KotlinNativeNpmPublishingExtension @Inject constructor(project: P
     val publishArguments: ListProperty<String> = project.objects.listProperty(String::class.java)
         .convention(emptyList())
 
+    val stage: KotlinNativeNpmStage = project.objects.newInstance(
+        KotlinNativeNpmStage::class.java,
+        project,
+    )
+
+    fun stage(action: Action<in KotlinNativeNpmStage>) {
+        action.execute(stage)
+    }
+}
+
+abstract class KotlinNativeNpmStage @Inject constructor(project: Project) {
     val outputDirectory: DirectoryProperty = project.objects.directoryProperty()
-        .convention(project.layout.buildDirectory.dir("kotlin-native-npm-publishing"))
+        .convention(project.layout.buildDirectory.dir("kotlinNativeNpmPublishing"))
+
+    val main: KotlinNativeNpmPackageStageSpec = project.objects.newInstance(
+        KotlinNativeNpmPackageStageSpec::class.java,
+        project,
+    )
+
+    val platforms: KotlinNativeNpmPackageStageSpec = project.objects.newInstance(
+        KotlinNativeNpmPackageStageSpec::class.java,
+        project,
+    )
+
+    fun main(action: Action<in KotlinNativeNpmPackageStageSpec>) {
+        action.execute(main)
+    }
+
+    fun platforms(action: Action<in KotlinNativeNpmPackageStageSpec>) {
+        action.execute(platforms)
+    }
+}
+
+abstract class KotlinNativeNpmPackageStageSpec @Inject constructor(private val project: Project) {
+    @get:Nested
+    internal val copySpecs: ListProperty<KotlinNativeNpmStageCopySpec> =
+        project.objects.listProperty(KotlinNativeNpmStageCopySpec::class.java)
+            .convention(emptyList())
+
+    fun copy(source: Any) {
+        addCopy(source, destinationPath = null, requireRegularFile = false)
+    }
+
+    fun copy(source: Any, path: String) {
+        addCopy(source, destinationPath = path, requireRegularFile = false)
+    }
+
+    fun readme() {
+        readme(project.layout.projectDirectory.file("README.md"))
+    }
+
+    fun readme(source: Any) {
+        addCopy(source, destinationPath = "README.md", requireRegularFile = true)
+    }
+
+    fun license() {
+        license(project.layout.projectDirectory.file("LICENSE"))
+    }
+
+    fun license(source: Any) {
+        addCopy(source, destinationPath = "LICENSE", requireRegularFile = true)
+    }
+
+    private fun addCopy(source: Any, destinationPath: String?, requireRegularFile: Boolean) {
+        val copySpec = project.objects.newInstance(KotlinNativeNpmStageCopySpec::class.java)
+        copySpec.sourceFiles.from(source)
+        destinationPath?.let(copySpec.destinationPath::set)
+        copySpec.requireRegularFile.set(requireRegularFile)
+        copySpecs.add(copySpec)
+    }
+}
+
+abstract class KotlinNativeNpmStageCopySpec @Inject constructor() {
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val sourceFiles: ConfigurableFileCollection
+
+    @get:Optional
+    @get:Input
+    abstract val destinationPath: Property<String>
+
+    @get:Input
+    abstract val requireRegularFile: Property<Boolean>
+
+    init {
+        requireRegularFile.convention(false)
+    }
 }

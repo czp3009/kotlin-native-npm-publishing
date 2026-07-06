@@ -1,5 +1,6 @@
 package com.hiczp.kotlin.native.npm.publishing.task
 
+import com.hiczp.kotlin.native.npm.publishing.KotlinNativeNpmStageCopySpec
 import com.hiczp.kotlin.native.npm.publishing.npmCpu
 import com.hiczp.kotlin.native.npm.publishing.npmOs
 import groovy.json.JsonOutput
@@ -18,10 +19,52 @@ import java.io.File
 import javax.inject.Inject
 
 @DisableCachingByDefault(because = "This task assembles a temporary npm package directory for immediate publication.")
-abstract class GenerateKotlinNativeNpmMainPackageTask : DefaultTask() {
+abstract class PrepareKotlinNativeNpmMainPackageTask : DefaultTask() {
     @get:Inject
     abstract val fileSystemOperations: FileSystemOperations
 
+    @get:Input
+    abstract val commandName: Property<String>
+
+    @get:Nested
+    abstract val stageCopySpecs: ListProperty<KotlinNativeNpmStageCopySpec>
+
+    @get:Internal
+    abstract val packageDirectory: DirectoryProperty
+
+    init {
+        stageCopySpecs.convention(emptyList())
+        outputs.upToDateWhen { false }
+    }
+
+    @TaskAction
+    fun prepare() {
+        val commandName = commandName.get().trim()
+        require(commandName.isNotEmpty()) { "npm command name must not be empty." }
+
+        val packageDir = packageDirectory.get().asFile
+        fileSystemOperations.delete {
+            delete(packageDir)
+        }
+
+        val binDir = packageDir.resolve("bin")
+        binDir.mkdirs()
+
+        val wrapperResource = "/com/hiczp/kotlin/native/npm/publishing/wrapper.js"
+        val script = binDir.resolve("$commandName.js")
+        script.writeText(
+            javaClass.getResource(wrapperResource)?.readText(Charsets.UTF_8)
+                ?: throw GradleException("Missing wrapper resource: $wrapperResource"),
+            Charsets.UTF_8,
+        )
+        script.setExecutable(true, false)
+
+        copyStageFiles(packageDir, stageCopySpecs.get(), fileSystemOperations)
+    }
+}
+
+@DisableCachingByDefault(because = "This task finalizes a temporary npm package directory for immediate publication.")
+abstract class FinalizeKotlinNativeNpmMainPackageTask : DefaultTask() {
     @get:Nested
     abstract val packageMetadata: KotlinNativeNpmPackageMetadata
 
@@ -31,15 +74,16 @@ abstract class GenerateKotlinNativeNpmMainPackageTask : DefaultTask() {
     @get:Input
     abstract val targetNames: SetProperty<String>
 
-    @get:OutputDirectory
-    abstract val outputDirectory: DirectoryProperty
+    @get:Internal
+    abstract val packageDirectory: DirectoryProperty
 
     init {
         targetNames.convention(emptySet())
+        outputs.upToDateWhen { false }
     }
 
     @TaskAction
-    fun generate() {
+    fun finalizePackage() {
         val packageName = packageMetadata.packageName.get().trim()
         val packageVersion = packageMetadata.packageVersion.get().trim()
         val commandName = commandName.get().trim()
@@ -53,23 +97,9 @@ abstract class GenerateKotlinNativeNpmMainPackageTask : DefaultTask() {
         }
         require(commandName.isNotEmpty()) { "npm command name must not be empty." }
 
-        val packageDir = outputDirectory.get().asFile
-        fileSystemOperations.delete {
-            delete(packageDir)
-        }
-
-        val binDir = packageDir.resolve("bin")
-        binDir.mkdirs()
-
+        val packageDir = packageDirectory.get().asFile
         val scriptPath = "bin/$commandName.js"
-        val script = binDir.resolve("$commandName.js")
-        val wrapperResource = "/com/hiczp/kotlin/native/npm/publishing/wrapper.js"
-        script.writeText(
-            javaClass.getResource(wrapperResource)?.readText(Charsets.UTF_8)
-                ?: throw GradleException("Missing wrapper resource: $wrapperResource"),
-            Charsets.UTF_8,
-        )
-        script.setExecutable(true, false)
+        val packageFiles = scanPackageFiles(packageDir)
 
         writeJson(
             packageDir.resolve("package.json"),
@@ -83,29 +113,9 @@ abstract class GenerateKotlinNativeNpmMainPackageTask : DefaultTask() {
 
                 put("name", packageName)
                 put("version", packageVersion)
-                packageMetadata.description.orNull?.let { put("description", it) }
-                packageMetadata.license.orNull?.let { put("license", it) }
-                packageMetadata.repository.orNull?.trim()?.trimEnd('/')?.let { repositoryUrl ->
-                    put(
-                        "repository",
-                        mapOf(
-                            "type" to "git",
-                            "url" to when {
-                                repositoryUrl.startsWith("git+") -> repositoryUrl
-                                repositoryUrl.startsWith("https://github.com/") && !repositoryUrl.endsWith(".git") -> "git+$repositoryUrl.git"
-                                repositoryUrl.startsWith("https://github.com/") -> "git+$repositoryUrl"
-                                else -> repositoryUrl
-                            },
-                        ),
-                    )
-                }
-                packageMetadata.homepage.orNull?.let { put("homepage", it) }
-                val keywords = packageMetadata.keywords.get()
-                if (keywords.isNotEmpty()) {
-                    put("keywords", keywords)
-                }
+                putMainMetadata(packageMetadata)
                 put("bin", mapOf(commandName to scriptPath))
-                put("files", listOf("bin/"))
+                put("files", packageFiles)
                 put("kotlinNativeNpmPublishing", mapOf("platformPackages" to platformPackages))
                 if (platformPackages.isNotEmpty()) {
                     put("optionalDependencies", platformPackages.values.associateWith { packageVersion })
@@ -116,12 +126,9 @@ abstract class GenerateKotlinNativeNpmMainPackageTask : DefaultTask() {
 }
 
 @DisableCachingByDefault(because = "This task assembles a temporary npm package directory for immediate publication.")
-abstract class GenerateKotlinNativeNpmPlatformPackageTask : DefaultTask() {
+abstract class PrepareKotlinNativeNpmPlatformPackageTask : DefaultTask() {
     @get:Inject
     abstract val fileSystemOperations: FileSystemOperations
-
-    @get:Nested
-    abstract val packageMetadata: KotlinNativeNpmPackageMetadata
 
     @get:Input
     abstract val targetName: Property<String>
@@ -130,11 +137,61 @@ abstract class GenerateKotlinNativeNpmPlatformPackageTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.NAME_ONLY)
     abstract val executableFile: RegularFileProperty
 
-    @get:OutputDirectory
-    abstract val outputDirectory: DirectoryProperty
+    @get:Nested
+    abstract val stageCopySpecs: ListProperty<KotlinNativeNpmStageCopySpec>
+
+    @get:Internal
+    abstract val packageDirectory: DirectoryProperty
+
+    init {
+        stageCopySpecs.convention(emptyList())
+        outputs.upToDateWhen { false }
+    }
 
     @TaskAction
-    fun generate() {
+    fun prepare() {
+        val konanTarget = requireNotNull(KonanTarget.predefinedTargets[targetName.get()]) {
+            "Unknown kotlin native target: ${targetName.get()}."
+        }
+
+        val packageDir = packageDirectory.get().asFile
+        fileSystemOperations.delete {
+            delete(packageDir)
+        }
+
+        val source = executableFile.get().asFile
+        require(source.isFile) { "Expected executable output for ${konanTarget.name} at ${source.absolutePath}." }
+        val target = packageDir.resolve("bin/${source.name}")
+        fileSystemOperations.copy {
+            from(source)
+            into(packageDir.resolve("bin"))
+        }
+        target.setExecutable(true, false)
+
+        copyStageFiles(packageDir, stageCopySpecs.get(), fileSystemOperations)
+    }
+}
+
+@DisableCachingByDefault(because = "This task finalizes a temporary npm package directory for immediate publication.")
+abstract class FinalizeKotlinNativeNpmPlatformPackageTask : DefaultTask() {
+    @get:Nested
+    abstract val packageMetadata: KotlinNativeNpmPackageMetadata
+
+    @get:Input
+    abstract val targetName: Property<String>
+
+    @get:Input
+    abstract val binaryPath: Property<String>
+
+    @get:Internal
+    abstract val packageDirectory: DirectoryProperty
+
+    init {
+        outputs.upToDateWhen { false }
+    }
+
+    @TaskAction
+    fun finalizePackage() {
         val packageName = packageMetadata.packageName.get().trim()
         val packageVersion = packageMetadata.packageVersion.get().trim()
         val konanTarget = requireNotNull(KonanTarget.predefinedTargets[targetName.get()]) {
@@ -147,32 +204,22 @@ abstract class GenerateKotlinNativeNpmPlatformPackageTask : DefaultTask() {
             "Project version is unspecified. Configure project.version or kotlinNativeNpmPublishing.packageVersion."
         }
 
-        val packageDir = outputDirectory.get().asFile
-        fileSystemOperations.delete {
-            delete(packageDir)
+        val packageDir = packageDirectory.get().asFile
+        val binaryRelativePath = normalizeRelativePackagePath(binaryPath.get())
+        require(packageDir.resolve(binaryRelativePath).isFile) {
+            "Expected executable in ${packageDir.absolutePath}: $binaryRelativePath"
         }
-
-        val source = executableFile.get().asFile
-        require(source.isFile) { "Expected executable output for ${konanTarget.name} at ${source.absolutePath}." }
-        val binaryPath = "bin/${source.name}"
-        val target = packageDir.resolve(binaryPath)
-        fileSystemOperations.copy {
-            from(source)
-            into(packageDir.resolve("bin"))
-        }
-        target.setExecutable(true, false)
 
         writeJson(
             packageDir.resolve("package.json"),
             buildMap {
                 put("name", platformPackageName(packageName, konanTarget.name))
                 put("version", packageVersion)
-                packageMetadata.description.orNull?.let { put("description", it) }
-                packageMetadata.license.orNull?.let { put("license", it) }
+                putBasicMetadata(packageMetadata)
                 put("os", listOf(npmOs))
                 put("cpu", listOf(konanTarget.npmCpu))
-                put("files", listOf("bin/"))
-                put("kotlinNativeNpmPublishing", mapOf("binary" to binaryPath))
+                put("files", scanPackageFiles(packageDir))
+                put("kotlinNativeNpmPublishing", mapOf("binary" to binaryRelativePath))
             },
         )
     }
@@ -203,6 +250,97 @@ abstract class KotlinNativeNpmPackageMetadata {
 
     @get:Input
     abstract val keywords: ListProperty<String>
+}
+
+private fun copyStageFiles(
+    packageDir: File,
+    copySpecs: Iterable<KotlinNativeNpmStageCopySpec>,
+    fileSystemOperations: FileSystemOperations,
+) {
+    copySpecs.forEach { copySpec ->
+        val sources = copySpec.sourceFiles.files
+        require(sources.size == 1) {
+            "Stage copy source must resolve to exactly one file or directory. Resolved sources: ${
+                sources.joinToString { it.absolutePath }
+            }"
+        }
+
+        val source = sources.single()
+        require(source.exists()) { "Stage copy source does not exist: ${source.absolutePath}" }
+        if (copySpec.requireRegularFile.get()) {
+            require(source.isFile) { "Stage copy source must be a file: ${source.absolutePath}" }
+        }
+
+        val destinationPath = copySpec.destinationPath.orNull?.let(::normalizeRelativePackagePath)
+        if (source.isDirectory) {
+            fileSystemOperations.copy {
+                from(source)
+                into(packageDir.resolve(destinationPath ?: source.name))
+            }
+        } else {
+            val destination = packageDir.resolve(destinationPath ?: source.name)
+            fileSystemOperations.copy {
+                from(source)
+                into(destination.parentFile)
+                rename { destination.name }
+            }
+        }
+    }
+}
+
+private fun normalizeRelativePackagePath(path: String): String {
+    val rawPath = path.trim()
+    require(rawPath.isNotEmpty()) { "Stage copy destination path must not be empty." }
+    require(!File(rawPath).isAbsolute && !rawPath.startsWith("/") && !rawPath.startsWith("\\")) {
+        "Stage copy destination path must be relative: $path"
+    }
+
+    val segments = rawPath
+        .replace('\\', '/')
+        .trim('/')
+        .split('/')
+        .filter { it.isNotEmpty() }
+
+    require(segments.isNotEmpty() && segments.none { it == "." || it == ".." }) {
+        "Stage copy destination path must stay inside the package directory: $path"
+    }
+
+    return segments.joinToString("/")
+}
+
+private fun scanPackageFiles(packageDir: File): List<String> =
+    packageDir.listFiles()
+        ?.filter { it.name != "package.json" }
+        ?.map { if (it.isDirectory) "${it.name}/" else it.name }
+        ?.sorted()
+        .orEmpty()
+
+private fun MutableMap<String, Any>.putBasicMetadata(packageMetadata: KotlinNativeNpmPackageMetadata) {
+    packageMetadata.description.orNull?.let { put("description", it) }
+    packageMetadata.license.orNull?.let { put("license", it) }
+}
+
+private fun MutableMap<String, Any>.putMainMetadata(packageMetadata: KotlinNativeNpmPackageMetadata) {
+    putBasicMetadata(packageMetadata)
+    packageMetadata.repository.orNull?.trim()?.trimEnd('/')?.let { repositoryUrl ->
+        put(
+            "repository",
+            mapOf(
+                "type" to "git",
+                "url" to when {
+                    repositoryUrl.startsWith("git+") -> repositoryUrl
+                    repositoryUrl.startsWith("https://github.com/") && !repositoryUrl.endsWith(".git") -> "git+$repositoryUrl.git"
+                    repositoryUrl.startsWith("https://github.com/") -> "git+$repositoryUrl"
+                    else -> repositoryUrl
+                },
+            ),
+        )
+    }
+    packageMetadata.homepage.orNull?.let { put("homepage", it) }
+    val keywords = packageMetadata.keywords.get()
+    if (keywords.isNotEmpty()) {
+        put("keywords", keywords)
+    }
 }
 
 private fun platformPackageName(packageName: String, targetName: String): String {

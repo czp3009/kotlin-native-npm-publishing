@@ -1,8 +1,10 @@
 package com.hiczp.kotlin.native.npm.publishing
 
 import com.github.gradle.node.npm.task.NpmTask
-import com.hiczp.kotlin.native.npm.publishing.task.GenerateKotlinNativeNpmMainPackageTask
-import com.hiczp.kotlin.native.npm.publishing.task.GenerateKotlinNativeNpmPlatformPackageTask
+import com.hiczp.kotlin.native.npm.publishing.task.FinalizeKotlinNativeNpmMainPackageTask
+import com.hiczp.kotlin.native.npm.publishing.task.FinalizeKotlinNativeNpmPlatformPackageTask
+import com.hiczp.kotlin.native.npm.publishing.task.PrepareKotlinNativeNpmMainPackageTask
+import com.hiczp.kotlin.native.npm.publishing.task.PrepareKotlinNativeNpmPlatformPackageTask
 import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
@@ -26,10 +28,25 @@ abstract class KotlinNativeNpmPublishingPlugin : Plugin<Project> {
             KotlinNativeNpmPublishingExtension::class.java,
         )
 
-        val generateMainPackage = project.tasks.register(
-            "generateKotlinNativeNpmMainPackage",
-            GenerateKotlinNativeNpmMainPackageTask::class.java,
+        val mainPackageDirectory = extension.stage.outputDirectory.dir("main")
+        val prepareMainPackage = project.tasks.register(
+            "prepareKotlinNativeNpmMainPackage",
+            PrepareKotlinNativeNpmMainPackageTask::class.java,
         ) {
+            group = "build"
+            description = "Prepares the main npm package stage directory."
+            commandName.set(extension.commandName)
+            stageCopySpecs.set(extension.stage.main.copySpecs)
+            packageDirectory.set(mainPackageDirectory)
+        }
+
+        val finalizeMainPackage = project.tasks.register(
+            "finalizeKotlinNativeNpmMainPackage",
+            FinalizeKotlinNativeNpmMainPackageTask::class.java,
+        ) {
+            group = "build"
+            description = "Finalizes the main npm package stage directory."
+            dependsOn(prepareMainPackage)
             packageMetadata.packageName.set(extension.packageName)
             packageMetadata.packageVersion.set(extension.packageVersion)
             commandName.set(extension.commandName)
@@ -38,7 +55,13 @@ abstract class KotlinNativeNpmPublishingPlugin : Plugin<Project> {
             packageMetadata.repository.set(extension.repository)
             packageMetadata.homepage.set(extension.homepage)
             packageMetadata.keywords.set(extension.keywords)
-            outputDirectory.set(extension.outputDirectory.dir("main"))
+            packageDirectory.set(mainPackageDirectory)
+        }
+
+        val generateMainPackage = project.tasks.register("generateKotlinNativeNpmMainPackage") {
+            group = "build"
+            description = "Generates the main npm package stage directory."
+            dependsOn(finalizeMainPackage)
         }
 
         val generatePackages = project.tasks.register("generateKotlinNativeNpmPackages") {
@@ -76,9 +99,9 @@ abstract class KotlinNativeNpmPublishingPlugin : Plugin<Project> {
 
         val mainPublishTask = project.registerNpmPublishTask(
             taskName = "publishKotlinNativeNpmMainPackage",
-            packageDirectory = extension.outputDirectory.file("main"),
+            packageDirectory = extension.stage.outputDirectory.file("main"),
             publishArguments = publishArguments,
-            dependsOn = listOf(generateMainPackage),
+            dependsOn = listOf(finalizeMainPackage),
             description = "Publishes the main npm package.",
         )
 
@@ -111,14 +134,34 @@ abstract class KotlinNativeNpmPublishingPlugin : Plugin<Project> {
                                 )
                             }
 
-                            generateMainPackage.configure {
+                            finalizeMainPackage.configure {
                                 targetNames.add(konanTarget.name)
                             }
 
-                            val generatePlatformPackage = project.tasks.register(
-                                "generateKotlinNativeNpm${targetTaskName}Package",
-                                GenerateKotlinNativeNpmPlatformPackageTask::class.java,
+                            val executableOutputFile =
+                                project.layout.file(binary.linkTaskProvider.flatMap { it.outputFile })
+                            val platformPackageDirectory =
+                                extension.stage.outputDirectory.dir("platforms/${konanTarget.name}")
+                            val preparePlatformPackage = project.tasks.register(
+                                "prepareKotlinNativeNpm${targetTaskName}Package",
+                                PrepareKotlinNativeNpmPlatformPackageTask::class.java,
                             ) {
+                                group = "build"
+                                description = "Prepares the ${target.name} npm platform package stage directory."
+                                targetName.set(konanTarget.name)
+                                executableFile.set(executableOutputFile)
+                                stageCopySpecs.set(extension.stage.platforms.copySpecs)
+                                packageDirectory.set(platformPackageDirectory)
+                                dependsOn(binary.linkTaskProvider)
+                            }
+
+                            val finalizePlatformPackage = project.tasks.register(
+                                "finalizeKotlinNativeNpm${targetTaskName}Package",
+                                FinalizeKotlinNativeNpmPlatformPackageTask::class.java,
+                            ) {
+                                group = "build"
+                                description = "Finalizes the ${target.name} npm platform package stage directory."
+                                dependsOn(preparePlatformPackage)
                                 packageMetadata.packageName.set(extension.packageName)
                                 packageMetadata.packageVersion.set(extension.packageVersion)
                                 packageMetadata.description.set(extension.description)
@@ -127,16 +170,23 @@ abstract class KotlinNativeNpmPublishingPlugin : Plugin<Project> {
                                 packageMetadata.homepage.set(extension.homepage)
                                 packageMetadata.keywords.set(extension.keywords)
                                 targetName.set(konanTarget.name)
-                                executableFile.set(project.layout.file(binary.linkTaskProvider.flatMap { it.outputFile }))
-                                outputDirectory.set(extension.outputDirectory.dir("platforms/${konanTarget.name}"))
-                                dependsOn(binary.linkTaskProvider)
+                                binaryPath.set(executableOutputFile.map { "bin/${it.asFile.name}" })
+                                packageDirectory.set(platformPackageDirectory)
+                            }
+
+                            val generatePlatformPackage = project.tasks.register(
+                                "generateKotlinNativeNpm${targetTaskName}Package",
+                            ) {
+                                group = "build"
+                                description = "Generates the ${target.name} npm platform package stage directory."
+                                dependsOn(finalizePlatformPackage)
                             }
 
                             val platformPublishTask = project.registerNpmPublishTask(
                                 taskName = "publishKotlinNativeNpm${targetTaskName}Package",
-                                packageDirectory = extension.outputDirectory.file("platforms/${konanTarget.name}"),
+                                packageDirectory = extension.stage.outputDirectory.file("platforms/${konanTarget.name}"),
                                 publishArguments = publishArguments,
-                                dependsOn = listOf(generatePlatformPackage),
+                                dependsOn = listOf(finalizePlatformPackage),
                                 description = "Publishes the ${target.name} npm platform package.",
                             )
 
