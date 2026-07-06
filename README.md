@@ -54,7 +54,7 @@ import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 
 plugins {
     kotlin("multiplatform") version "2.4.0"
-    id("com.hiczp.kotlin-native-npm-publishing") version "0.0.3"
+    id("com.hiczp.kotlin-native-npm-publishing") version "0.0.4"
 }
 
 group = "com.example"
