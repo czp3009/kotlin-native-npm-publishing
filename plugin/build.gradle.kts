@@ -16,6 +16,10 @@ repositories {
     mavenCentral()
 }
 
+kotlin {
+    jvmToolchain(21)
+}
+
 dependencies {
     implementation(libs.gradle.node.plugin)
     compileOnly(libs.kotlin.gradle.plugin)

@@ -6,6 +6,11 @@ can be run with `npx`.
 The plugin applies `com.github.node-gradle.node`, generates npm package directories, writes a JavaScript launcher, and
 runs `npm publish` through `gradle-node-plugin`.
 
+## Requirements
+
+- Java 21
+- Gradle wrapper included in this repository
+
 ## Package Layout
 
 The plugin publishes two kinds of npm packages:
@@ -49,7 +54,7 @@ import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 
 plugins {
     kotlin("multiplatform") version "2.4.0"
-    id("com.hiczp.kotlin-native-npm-publishing") version "0.0.2"
+    id("com.hiczp.kotlin-native-npm-publishing") version "0.0.3"
 }
 
 group = "com.example"

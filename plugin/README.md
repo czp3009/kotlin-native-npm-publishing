@@ -6,6 +6,8 @@ This subproject builds and publishes the Gradle plugin:
 com.hiczp.kotlin-native-npm-publishing
 ```
 
+This project builds with Java 21.
+
 ## Build And Validate
 
 Run these commands from the repository root.
