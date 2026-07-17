@@ -182,6 +182,22 @@ Configure the plugin with the `kotlinNativeNpmPublishing { ... }` block.
 
 Use `publishArguments` only for npm publish options that are not modeled by the plugin.
 
+### Gradle Properties
+
+Frequently changing parameters can be passed in as Gradle properties and forwarded to the plugin. For example:
+
+```kotlin
+kotlinNativeNpmPublishing {
+    otp.set(providers.gradleProperty("npmOtp"))
+}
+```
+
+Then pass the value on the command line:
+
+```shell
+./gradlew publishKotlinNativeNpm -PnpmOtp=123456
+```
+
 ## Stage DSL
 
 Use the stage DSL for normal package file customization. A custom Gradle task is usually not needed just to copy files
