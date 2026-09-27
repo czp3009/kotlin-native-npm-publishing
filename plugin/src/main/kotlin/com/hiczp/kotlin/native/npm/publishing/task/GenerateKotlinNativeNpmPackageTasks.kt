@@ -258,31 +258,39 @@ private fun copyStageFiles(
     fileSystemOperations: FileSystemOperations,
 ) {
     copySpecs.forEach { copySpec ->
-        val sources = copySpec.sourceFiles.files
-        require(sources.size == 1) {
-            "Stage copy source must resolve to exactly one file or directory. Resolved sources: ${
-                sources.joinToString { it.absolutePath }
-            }"
-        }
-
-        val source = sources.single()
-        require(source.exists()) { "Stage copy source does not exist: ${source.absolutePath}" }
-        if (copySpec.requireRegularFile.get()) {
-            require(source.isFile) { "Stage copy source must be a file: ${source.absolutePath}" }
-        }
-
-        val destinationPath = copySpec.destinationPath.orNull?.let(::normalizeRelativePackagePath)
-        if (source.isDirectory) {
-            fileSystemOperations.copy {
-                from(source)
-                into(packageDir.resolve(destinationPath ?: source.name))
+        val configuredSources = copySpec.sourceFiles.files
+        val sources = if (copySpec.existingFilesOnly.get()) {
+            configuredSources.filter { it.exists() }.also { files ->
+                require(files.isNotEmpty()) {
+                    "No stage copy source exists: ${configuredSources.joinToString { it.absolutePath }}"
+                }
             }
         } else {
-            val destination = packageDir.resolve(destinationPath ?: source.name)
-            fileSystemOperations.copy {
-                from(source)
-                into(destination.parentFile)
-                rename { destination.name }
+            require(configuredSources.size == 1) {
+                "Stage copy source must resolve to exactly one file or directory. Resolved sources: ${configuredSources.joinToString { it.absolutePath }}"
+            }
+            configuredSources.toList()
+        }
+
+        sources.forEach { source ->
+            require(source.exists()) { "Stage copy source does not exist: ${source.absolutePath}" }
+            if (copySpec.requireRegularFile.get()) {
+                require(source.isFile) { "Stage copy source must be a file: ${source.absolutePath}" }
+            }
+
+            val destinationPath = copySpec.destinationPath.orNull?.let(::normalizeRelativePackagePath)
+            if (source.isDirectory) {
+                fileSystemOperations.copy {
+                    from(source)
+                    into(packageDir.resolve(destinationPath ?: source.name))
+                }
+            } else {
+                val destination = packageDir.resolve(destinationPath ?: source.name)
+                fileSystemOperations.copy {
+                    from(source)
+                    into(destination.parentFile)
+                    rename { destination.name }
+                }
             }
         }
     }

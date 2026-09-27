@@ -105,7 +105,14 @@ abstract class KotlinNativeNpmPackageStageSpec @Inject constructor(private val p
     }
 
     fun license() {
-        license(project.layout.projectDirectory.file("LICENSE"))
+        val copySpec = project.objects.newInstance(KotlinNativeNpmStageCopySpec::class.java)
+        copySpec.sourceFiles.from(
+            project.layout.projectDirectory.file("LICENSE"),
+            project.layout.projectDirectory.file("LICENSE.txt"),
+        )
+        copySpec.existingFilesOnly.set(true)
+        copySpec.requireRegularFile.set(true)
+        copySpecs.add(copySpec)
     }
 
     fun license(source: Any) {
@@ -133,7 +140,11 @@ abstract class KotlinNativeNpmStageCopySpec @Inject constructor() {
     @get:Input
     abstract val requireRegularFile: Property<Boolean>
 
+    @get:Input
+    abstract val existingFilesOnly: Property<Boolean>
+
     init {
         requireRegularFile.convention(false)
+        existingFilesOnly.convention(false)
     }
 }

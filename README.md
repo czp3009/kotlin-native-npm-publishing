@@ -226,14 +226,14 @@ kotlinNativeNpmPublishing {
 Configure main package files with `stage.main { ... }` and platform package files with `stage.platforms { ... }`. Both
 blocks support the same methods:
 
-| Method             | Behavior                                                                                  |
-|--------------------|-------------------------------------------------------------------------------------------|
-| `copy(file)`       | Copies one file into the package root, or recursively copies one directory into the root. |
-| `copy(file, path)` | Copies one file or directory to a relative path under the package root.                   |
-| `readme(file)`     | Copies one file to `README.md`.                                                           |
-| `readme()`         | Copies the current Gradle project's `README.md`; fails if it does not exist.              |
-| `license(file)`    | Copies one file to `LICENSE`.                                                             |
-| `license()`        | Copies the current Gradle project's `LICENSE`; fails if it does not exist.                |
+| Method             | Behavior                                                                                                                   |
+|--------------------|----------------------------------------------------------------------------------------------------------------------------|
+| `copy(file)`       | Copies one file into the package root, or recursively copies one directory into the root.                                  |
+| `copy(file, path)` | Copies one file or directory to a relative path under the package root.                                                    |
+| `readme(file)`     | Copies one file to `README.md`.                                                                                            |
+| `readme()`         | Copies the current Gradle project's `README.md`; fails if it does not exist.                                               |
+| `license(file)`    | Copies one file to `LICENSE`.                                                                                              |
+| `license()`        | Copies the current Gradle project's existing `LICENSE` and `LICENSE.txt`, preserving their names; fails if neither exists. |
 
 `readme()` and `license()`, including their overloads, are convenience methods over `copy(...)` for common npm package
 files.
