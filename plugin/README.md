@@ -14,6 +14,11 @@ Run these commands from the repository root.
 
 Build the plugin:
 
+This also runs Gradle TestKit regression tests using `build.gradle.kts` fixtures for stage file handling,
+target-specific
+rules, and configuration-cache reuse. Platform staging tests use fixture executables and do not require native
+cross-compilation toolchains.
+
 ```shell
 ./gradlew -p plugin build
 ```

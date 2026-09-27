@@ -9,7 +9,6 @@ runs `npm publish` through `gradle-node-plugin`.
 ## Requirements
 
 - Java 21
-- Gradle wrapper included in this repository
 
 ## Package Layout
 
@@ -54,7 +53,7 @@ import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 
 plugins {
     kotlin("multiplatform") version "2.4.0"
-    id("com.hiczp.kotlin-native-npm-publishing") version "0.0.4"
+    id("com.hiczp.kotlin-native-npm-publishing") version "0.0.5"
 }
 
 group = "com.example"
@@ -83,9 +82,6 @@ kotlinNativeNpmPublishing {
     stage {
         main {
             readme()
-        }
-
-        platforms {
         }
     }
 }
@@ -218,6 +214,22 @@ kotlinNativeNpmPublishing {
         platforms {
             readme()
             copy("NOTICE.txt")
+
+            linuxX64 {
+                copy("resources/linux-x64", "resources")
+            }
+            linuxArm64 {
+                copy("resources/linux-arm64", "resources")
+            }
+            macosArm64 {
+                readme("docs/README-macos.md")
+            }
+            mingwX64 {
+                copy("scripts/setup.ps1")
+            }
+            target(org.jetbrains.kotlin.konan.target.KonanTarget.MACOS_X64) {
+                readme("docs/README-macos.md")
+            }
         }
     }
 }
@@ -237,6 +249,22 @@ blocks support the same methods:
 
 `readme()` and `license()`, including their overloads, are convenience methods over `copy(...)` for common npm package
 files.
+
+Inside `platforms`, use `linuxX64`, `linuxArm64`, `macosArm64`, or `mingwX64` blocks for
+target-specific files. These names match KMP's default target names. Each block supports the same file methods above.
+Matching uses the native target, not the host OS or a custom KMP target name. These blocks do not create KMP targets;
+Rules for targets without a configured, supported release executable are ignored without an unmatched-target error.
+You can share the same stage configuration across projects with different targets; unused rules do not resolve or
+validate their source files.
+
+Use `target(KonanTarget.MACOS_X64) { ... }` for targets without a named shortcut, such as deprecated KMP targets.
+Import `org.jetbrains.kotlin.konan.target.KonanTarget` to use this shorter form. The generic `target(...)` block accepts
+any `KonanTarget`, including targets for which this plugin does not generate packages; their rules are simply unused.
+Named shortcuts and generic blocks for the same target share their rules.
+
+Common platform rules always run before target-specific rules, regardless of where the blocks appear in the DSL.
+Target-specific files can therefore overwrite common files. Repeated blocks for the same target append their rules
+in declaration order. Main package files are unaffected.
 
 The plugin writes its launcher or native executable before applying stage copy rules. If a stage copy overwrites those
 files, the user-provided files win.

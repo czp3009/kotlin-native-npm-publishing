@@ -7,6 +7,7 @@ import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.*
+import org.jetbrains.kotlin.konan.target.KonanTarget
 import javax.inject.Inject
 
 abstract class KotlinNativeNpmPublishingExtension @Inject constructor(project: Project) {
@@ -68,18 +69,46 @@ abstract class KotlinNativeNpmStage @Inject constructor(project: Project) {
         project,
     )
 
-    val platforms: KotlinNativeNpmPackageStageSpec = project.objects.newInstance(
-        KotlinNativeNpmPackageStageSpec::class.java,
-        project,
-    )
+    // Gradle decoration would eagerly resolve KonanTarget even when KMP is not on the classpath.
+    val platforms = KotlinNativeNpmPlatformsStageSpec(project)
 
     fun main(action: Action<in KotlinNativeNpmPackageStageSpec>) {
         action.execute(main)
     }
 
-    fun platforms(action: Action<in KotlinNativeNpmPackageStageSpec>) {
+    fun platforms(action: Action<in KotlinNativeNpmPlatformsStageSpec>) {
         action.execute(platforms)
     }
+}
+
+class KotlinNativeNpmPlatformsStageSpec internal constructor(private val project: Project) :
+    KotlinNativeNpmPackageStageSpec(project) {
+    private val targetSpecs = mutableMapOf<KonanTarget, KotlinNativeNpmPackageStageSpec>()
+
+    fun linuxX64(action: Action<in KotlinNativeNpmPackageStageSpec>) {
+        target(KonanTarget.LINUX_X64, action)
+    }
+
+    fun linuxArm64(action: Action<in KotlinNativeNpmPackageStageSpec>) {
+        target(KonanTarget.LINUX_ARM64, action)
+    }
+
+    fun macosArm64(action: Action<in KotlinNativeNpmPackageStageSpec>) {
+        target(KonanTarget.MACOS_ARM64, action)
+    }
+
+    fun mingwX64(action: Action<in KotlinNativeNpmPackageStageSpec>) {
+        target(KonanTarget.MINGW_X64, action)
+    }
+
+    fun target(target: KonanTarget, action: Action<in KotlinNativeNpmPackageStageSpec>) {
+        action.execute(forTarget(target))
+    }
+
+    internal fun forTarget(target: KonanTarget): KotlinNativeNpmPackageStageSpec =
+        targetSpecs.getOrPut(target) {
+            project.objects.newInstance(KotlinNativeNpmPackageStageSpec::class.java, project)
+        }
 }
 
 abstract class KotlinNativeNpmPackageStageSpec @Inject constructor(private val project: Project) {

@@ -151,6 +151,7 @@ abstract class KotlinNativeNpmPublishingPlugin : Plugin<Project> {
                                 targetName.set(konanTarget.name)
                                 executableFile.set(executableOutputFile)
                                 stageCopySpecs.set(extension.stage.platforms.copySpecs)
+                                stageCopySpecs.addAll(extension.stage.platforms.forTarget(konanTarget).copySpecs)
                                 packageDirectory.set(platformPackageDirectory)
                                 dependsOn(binary.linkTaskProvider)
                             }

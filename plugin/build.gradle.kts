@@ -20,9 +20,21 @@ kotlin {
     jvmToolchain(21)
 }
 
+val kotlinTestRuntime by configurations.creating {
+    isCanBeConsumed = false
+    attributes.attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage.JAVA_RUNTIME))
+}
+
 dependencies {
     implementation(libs.gradle.node.plugin)
     compileOnly(libs.kotlin.gradle.plugin)
+    testImplementation(gradleTestKit())
+    testImplementation(libs.junit)
+    kotlinTestRuntime(libs.kotlin.gradle.plugin)
+}
+
+tasks.test {
+    systemProperty("test.kotlinClasspath", kotlinTestRuntime.asPath)
 }
 
 gradlePlugin {

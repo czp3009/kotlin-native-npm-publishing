@@ -2,10 +2,12 @@
 gradle-node-plugin = "7.1.0"
 gradle-plugin-publish = "2.1.1"
 kotlin = "2.4.0"
+junit = "4.13.2"
 
 [libraries]
 gradle-node-plugin = { module = "com.github.node-gradle:gradle-node-plugin", version.ref = "gradle-node-plugin" }
 kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+junit = { module = "junit:junit", version.ref = "junit" }
 
 [plugins]
 gradle-plugin-publish = { id = "com.gradle.plugin-publish", version.ref = "gradle-plugin-publish" }
